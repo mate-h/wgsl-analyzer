@@ -127,17 +127,19 @@ pub enum SyntaxKind {
     UnofficialPreprocessorEndif,
     #[regex("#else.*")]
     UnofficialPreprocessorElse,
-    #[regex("#import.*")]
+    #[regex(r#"#(import|include).*"#)]
     UnofficialPreprocessorImport,
     #[regex("#define_import_path.*")]
     UnofficialPreprocessorDefineImportPath,
     #[regex("#if.*")]
     UnofficialPreprocessIf,
+    #[regex(r#"#\{[^}]*\}"#)]
+    PreprocessorExpression,
 
     #[regex("//.*")]
     Comment,
 
-    #[regex(r#"([_\p{XID_Start}]\p{XID_Continue}*)|(\p{XID_Start})"#)]
+    #[regex(r#"[a-zA-Z_][a-zA-Z0-9_]*(::[a-zA-Z_][a-zA-Z0-9_]*)?"#)]
     Ident,
 
     // literals
@@ -327,6 +329,8 @@ pub enum SyntaxKind {
     Workgroup,
     #[token("write")]
     Write,
+    #[token("as")]
+    As,
 
     // syntactic tokens
     #[token("&")]

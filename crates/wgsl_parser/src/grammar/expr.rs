@@ -268,6 +268,7 @@ pub const TOKENSET_LITERAL: &[SyntaxKind] = &[
     SyntaxKind::DecimalFloatLiteral,
     SyntaxKind::True,
     SyntaxKind::False,
+    SyntaxKind::PreprocessorExpression,
 ];
 pub fn literal(p: &mut Parser) -> CompletedMarker {
     assert!(p.at_set(TOKENSET_LITERAL));

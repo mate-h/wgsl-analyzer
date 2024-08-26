@@ -70,7 +70,13 @@ fn import(p: &mut Parser, m: Marker) {
         m.complete(p, SyntaxKind::ImportPath);
     } else if p.at(SyntaxKind::Ident) {
         let m = p.start();
-        while p.at(SyntaxKind::Ident) || p.at(SyntaxKind::ColonColon) {
+        while p.at(SyntaxKind::Ident)
+            || p.at(SyntaxKind::ColonColon)
+            || p.at(SyntaxKind::Comma)
+            || p.at(SyntaxKind::As)
+            || p.at(SyntaxKind::BraceRight)
+            || p.at(SyntaxKind::Semicolon)
+        {
             p.bump();
         }
         m.complete(p, SyntaxKind::ImportCustom);
@@ -396,26 +402,35 @@ const TYPE_SET: &[SyntaxKind] = &[
     SyntaxKind::BindingArray,
 ];
 pub fn type_decl(p: &mut Parser) -> Option<CompletedMarker> {
+    let m = p.start();
     if p.at_set(TYPE_SET) {
-        let m_ty = p.start();
-        let ty = p.bump();
-        // We don't validate which types should have generics and which shouldn't here,
-        // because `expr` relies on that (specifically for vec3(1.0) etc., where the
-        // type is inferred)
-        if p.at(SyntaxKind::LessThan) {
-            type_decl_generics(p);
-        }
-        Some(m_ty.complete(p, ty))
-    } else if p.at(SyntaxKind::Ident) {
-        let m_ty = p.start();
-        let m_name_ref = p.start();
         p.bump();
-        m_name_ref.complete(p, SyntaxKind::NameRef);
-        Some(m_ty.complete(p, SyntaxKind::PathType))
+    } else if p.at(SyntaxKind::Ident) {
+        let path_m = p.start();
+        p.bump();
+        while p.at(SyntaxKind::ColonColon) {
+            p.bump();
+            if p.at(SyntaxKind::Ident) {
+                p.bump();
+            } else {
+                p.error();
+                break;
+            }
+        }
+        path_m.complete(p, SyntaxKind::PathType);
     } else {
-        p.error();
-        None
+        m.complete(p, SyntaxKind::Error);
+        return None;
     }
+
+    // We don't validate which types should have generics and which shouldn't here,
+    // because `expr` relies on that (specifically for vec3(1.0) etc., where the
+    // type is inferred)
+    if p.at(SyntaxKind::LessThan) {
+        type_decl_generics(p);
+    }
+
+    Some(m.complete(p, SyntaxKind::Type))
 }
 pub(crate) fn type_decl_generics(p: &mut Parser) {
     list(
@@ -428,6 +443,8 @@ pub(crate) fn type_decl_generics(p: &mut Parser) {
             let _ = if_at_set(p, ACCESS_MODE_SET) || if_at_set(p, STORAGE_CLASS_SET) || {
                 if p.at_set(TOKENSET_LITERAL) {
                     expr::literal(p);
+                } else if p.at(SyntaxKind::PreprocessorExpression) {
+                    p.bump();
                 } else {
                     type_decl(p);
                 }
@@ -692,23 +709,27 @@ fn switch_statement(p: &mut Parser) {
 
 fn switch_body(p: &mut Parser) {
     let m = p.start();
-    if p.at(SyntaxKind::Case) {
-        p.expect(SyntaxKind::Case);
+    if p.at(SyntaxKind::Case) || p.at(SyntaxKind::Default) {
+        if p.at(SyntaxKind::Case) {
+            p.expect(SyntaxKind::Case);
 
-        let m_selectors = p.start();
-        while !p.at_set(&[
-            SyntaxKind::Colon,
-            SyntaxKind::BraceLeft,
-            SyntaxKind::BraceRight,
-        ]) || p.at_end()
-        {
-            if p.at(SyntaxKind::BraceRight) {
-                break;
+            let m_selectors = p.start();
+            while !p.at_set(&[
+                SyntaxKind::Colon,
+                SyntaxKind::BraceLeft,
+                SyntaxKind::BraceRight,
+            ]) || p.at_end()
+            {
+                if p.at(SyntaxKind::BraceRight) {
+                    break;
+                }
+                expr(p); // actually only const_literals are allowed here, but we parse more liberally
+                p.eat(SyntaxKind::Comma);
             }
-            expr(p); // actually only const_literals are allowed here, but we parse more liberally
-            p.eat(SyntaxKind::Comma);
+            m_selectors.complete(p, SyntaxKind::SwitchCaseSelectors);
+        } else if p.at(SyntaxKind::Default) {
+            p.expect(SyntaxKind::Default);
         }
-        m_selectors.complete(p, SyntaxKind::SwitchCaseSelectors);
 
         p.eat(SyntaxKind::Colon);
 
@@ -719,11 +740,6 @@ fn switch_body(p: &mut Parser) {
 
         compound_statement(p);
         m.complete(p, SyntaxKind::SwitchBodyCase);
-    } else if p.at(SyntaxKind::Default) {
-        p.expect(SyntaxKind::Default);
-        p.expect(SyntaxKind::Colon);
-        compound_statement(p);
-        m.complete(p, SyntaxKind::SwitchBodyDefault);
     } else {
         p.error();
         m.complete(p, SyntaxKind::SwitchBodyCase);
